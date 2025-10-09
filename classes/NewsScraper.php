@@ -263,7 +263,7 @@ class NewsScraper {
         
         $count = 0;
         foreach ($articles as $link) {
-            if ($count >= 10) break;
+            if ($count >= 15) break; // Ökat från 10 till 15 nyheter från BBC
             
             $title = trim($link->textContent);
             $href = $link->getAttribute('href');
