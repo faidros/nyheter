@@ -1,0 +1,34 @@
+# Ignorera temporära filer
+*.tmp
+*.temp
+*.log
+
+# Ignorera cache-filer
+cache/
+*.cache
+
+# Ignorera OS-specifika filer
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignorera editor-filer
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignorera backup-filer
+*.bak
+*.backup
+*.old
+
+# Ignorera konfigurationsfiler med känslig data (om du lägger till API-nycklar)
+config.local.php
+secrets.php
+
+# Ignorera utvecklingsfiler
+test.php
+debug.php
+temp.php
