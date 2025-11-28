@@ -135,7 +135,7 @@ class NewsScraper {
                 foreach ($xml->channel->item as $item) {
                     $news[] = [
                         'title' => (string) $item->title,
-                        'description' => $this->cleanDescription((string) $item->description),
+                        'description' => $this->cleanDescription((string) $item->description, 800),
                         'link' => (string) $item->link,
                         'pubDate' => $this->parseDate((string) $item->pubDate),
                         'source' => $sourceName
@@ -238,13 +238,14 @@ class NewsScraper {
             }
             
             if ($title && $link) {
-                if (!str_starts_with($link, 'http')) {
+                if (!$this->startsWith($link, 'http')) {
                     $link = 'https://www.dn.se' . $link;
                 }
                 
+                $desc = $this->fetchArticleDescription($link);
                 $news[] = [
                     'title' => $title,
-                    'description' => '',
+                    'description' => $desc,
                     'link' => $link,
                     'pubDate' => date('c'),
                     'source' => 'DN'
@@ -269,13 +270,14 @@ class NewsScraper {
             $href = $link->getAttribute('href');
             
             if ($title && $href && strlen($title) > 10) {
-                if (!str_starts_with($href, 'http')) {
+                if (!$this->startsWith($href, 'http')) {
                     $href = 'https://www.bbc.com' . $href;
                 }
                 
+                $desc = $this->fetchArticleDescription($href);
                 $news[] = [
                     'title' => $title,
-                    'description' => '',
+                    'description' => $desc,
                     'link' => $href,
                     'pubDate' => date('c'),
                     'source' => 'BBC News'
@@ -300,13 +302,14 @@ class NewsScraper {
             $href = $link->getAttribute('href');
             
             if ($title && $href && strlen($title) > 10) {
-                if (!str_starts_with($href, 'http')) {
+                if (!$this->startsWith($href, 'http')) {
                     $href = 'https://www.dr.dk' . $href;
                 }
                 
+                $desc = $this->fetchArticleDescription($href);
                 $news[] = [
                     'title' => $title,
-                    'description' => '',
+                    'description' => $desc,
                     'link' => $href,
                     'pubDate' => date('c'),
                     'source' => 'DR'
@@ -332,14 +335,14 @@ class NewsScraper {
             $href = $link->getAttribute('href');
             
             if ($title && $href && strlen($title) > 10) {
-                if (!str_starts_with($href, 'http')) {
+                if (!$this->startsWith($href, 'http')) {
                     $parsed = parse_url($baseUrl);
                     $href = $parsed['scheme'] . '://' . $parsed['host'] . $href;
                 }
-                
+                $desc = $this->fetchArticleDescription($href);
                 $news[] = [
                     'title' => $title,
-                    'description' => '',
+                    'description' => $desc,
                     'link' => $href,
                     'pubDate' => date('c'),
                     'source' => $sourceName
@@ -351,17 +354,96 @@ class NewsScraper {
         return $news;
     }
     
-    private function cleanDescription($description) {
+    /**
+     * Rensa och trunkera en beskrivning.
+     * @param string $description
+     * @param int $maxLen max antal tecken (default 200)
+     * @return string
+     */
+    private function cleanDescription($description, $maxLen = 200) {
         // Ta bort HTML-taggar och extra whitespace
         $description = strip_tags($description);
         $description = trim($description);
-        
-        // Begränsa längden
-        if (strlen($description) > 200) {
-            $description = substr($description, 0, 200) . '...';
+
+        // Använd multibyte-funktioner
+        if (mb_strlen($description, 'UTF-8') > $maxLen) {
+            $description = mb_substr($description, 0, $maxLen, 'UTF-8') . '...';
         }
-        
+
         return $description;
+    }
+
+    /**
+     * Försök hämta ett längre utdrag från artikelsidan.
+     * Returnerar alltid en sträng (möjligen tom).
+     */
+    private function fetchArticleDescription($url) {
+        // Försök först att hämta URL:en
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 8,
+                'user_agent' => $this->userAgent,
+                'follow_location' => true,
+                'max_redirects' => 3,
+                'ignore_errors' => true
+            ]
+        ]);
+
+        $html = @file_get_contents($url, false, $context);
+        if ($html === false) {
+            return '';
+        }
+
+        // Försök plocka ut meta description först
+        if (preg_match('/<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)["\']/i', $html, $m)) {
+            return $this->cleanDescription(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 800);
+        }
+
+        // Annars använd DOM för att ta de första textstyckena i article eller p
+        libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        if (@$dom->loadHTML($html) === false) {
+            libxml_clear_errors();
+            return '';
+        }
+        libxml_clear_errors();
+
+        $xpath = new DOMXPath($dom);
+
+        // Försök flera vanliga selektorer som innehåller ingress/lede
+        $selectors = [
+            "//article//p[string-length(normalize-space()) > 50]",
+            "//div[contains(@class,'lead')]//p[string-length(normalize-space()) > 50]",
+            "//p[string-length(normalize-space()) > 80]",
+            "//div[contains(@class,'article-body')]//p[string-length(normalize-space()) > 50]"
+        ];
+
+        $collected = '';
+        foreach ($selectors as $sel) {
+            $nodes = $xpath->query($sel);
+            if ($nodes->length > 0) {
+                $count = 0;
+                foreach ($nodes as $node) {
+                    $text = trim($node->textContent);
+                    if ($text === '') continue;
+                    $collected .= "\n\n" . $text;
+                    $count++;
+                    if ($count >= 3) break; // ta max 3 stycken
+                }
+            }
+            if (!empty(trim($collected))) break;
+        }
+
+        if (!empty(trim($collected))) {
+            return $this->cleanDescription($collected, 800);
+        }
+
+        // Som sista utväg, ta meta property=og:description
+        if (preg_match('/<meta\s+property=["\']og:description["\']\s+content=["\']([^"\']+)["\']/i', $html, $m2)) {
+            return $this->cleanDescription(html_entity_decode($m2[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 800);
+        }
+
+        return '';
     }
     
     private function parseDate($dateString) {
@@ -377,5 +459,13 @@ class NewsScraper {
         }
         
         return date('c', $timestamp);
+    }
+
+    /**
+     * Kompatibilitetsmetod för startsWith (PHP < 8)
+     */
+    private function startsWith($haystack, $needle) {
+        if ($needle === '') return true;
+        return mb_substr($haystack, 0, mb_strlen($needle, 'UTF-8'), 'UTF-8') === $needle;
     }
 }
