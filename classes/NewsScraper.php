@@ -306,7 +306,7 @@ class NewsScraper {
                     $href = 'https://www.dr.dk' . $href;
                 }
                 
-                $desc = $this->fetchArticleDescription($href);
+                $desc = ''; // DR använder JS-renderat innehåll, så vi skippar fetchArticleDescription för nu
                 $news[] = [
                     'title' => $title,
                     'description' => $desc,
