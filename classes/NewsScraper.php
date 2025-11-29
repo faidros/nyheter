@@ -135,7 +135,7 @@ class NewsScraper {
                 foreach ($xml->channel->item as $item) {
                     $news[] = [
                         'title' => (string) $item->title,
-                        'description' => $this->cleanDescription((string) $item->description, 800),
+                        'description' => $this->cleanDescription((string) $item->description, 1600),
                         'link' => (string) $item->link,
                         'pubDate' => $this->parseDate((string) $item->pubDate),
                         'source' => $sourceName
@@ -396,7 +396,7 @@ class NewsScraper {
 
         // Försök plocka ut meta description först
         if (preg_match('/<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)["\']/i', $html, $m)) {
-            return $this->cleanDescription(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 800);
+            return $this->cleanDescription(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 1600);
         }
 
         // Annars använd DOM för att ta de första textstyckena i article eller p
@@ -435,12 +435,12 @@ class NewsScraper {
         }
 
         if (!empty(trim($collected))) {
-            return $this->cleanDescription($collected, 800);
+            return $this->cleanDescription($collected, 1600);
         }
 
         // Som sista utväg, ta meta property=og:description
         if (preg_match('/<meta\s+property=["\']og:description["\']\s+content=["\']([^"\']+)["\']/i', $html, $m2)) {
-            return $this->cleanDescription(html_entity_decode($m2[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 800);
+            return $this->cleanDescription(html_entity_decode($m2[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), 1600);
         }
 
         return '';
